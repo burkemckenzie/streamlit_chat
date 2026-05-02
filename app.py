@@ -173,7 +173,7 @@ for i, message in enumerate(st.session_state.messages):
                     if submitted:
                         history_slice = [
                             {"role": m["role"], "content": m["content"]}
-                            for m in st.session_state.messages[: i + 1]
+                            for m in st.session_state.messages[: i - 1]
                         ][-5:]
                         submit_feedback(
                             st.session_state.current_backend,
