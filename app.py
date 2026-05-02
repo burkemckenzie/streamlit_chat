@@ -46,7 +46,7 @@ def fetch_greeting(backend_name):
     return {"role": "assistant", "content": random.choice(fallback_greetings)}
 
 
-def submit_feedback(backend_name, feedback_type, query, response, comment=""):
+def submit_feedback(backend_name, feedback_type, query, response, comment="", history=None):
     """POST feedback to the active backend's /feedback endpoint (fire-and-forget)."""
     config = BACKENDS[backend_name]
     url = f"{config['url']}/feedback"
@@ -65,6 +65,7 @@ def submit_feedback(backend_name, feedback_type, query, response, comment=""):
         "response": response_with_comment,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "comment": comment,
+        "history": history or [],
     }
     try:
         requests.post(url, headers=headers, json=payload, timeout=5)
@@ -125,6 +126,18 @@ for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+        if message["role"] == "assistant" and message.get("chunks_used"):
+            chunks = message["chunks_used"]
+            with st.expander(f"Chunks used ({len(chunks)})"):
+                st.write(chunks)
+
+        if message["role"] == "assistant" and message.get("_debug") is not None:
+            with st.expander("DEBUG: request sent + response received"):
+                st.markdown("**Request payload sent to backend:**")
+                st.json(message["_debug"]["request"])
+                st.markdown("**Raw response from backend:**")
+                st.json(message["_debug"]["response"])
+
         # Feedback widgets only on assistant messages, skipping the initial greeting (i == 0)
         if message["role"] == "assistant" and i > 0:
             existing = message.get("feedback")
@@ -158,12 +171,17 @@ for i, message in enumerate(st.session_state.messages):
                     )
                     submitted = st.form_submit_button("Submit feedback")
                     if submitted:
+                        history_slice = [
+                            {"role": m["role"], "content": m["content"]}
+                            for m in st.session_state.messages[: i + 1]
+                        ][-5:]
                         submit_feedback(
                             st.session_state.current_backend,
                             "negative",
                             find_query_for(i),
                             message["content"],
                             comment=comment or "",
+                            history=history_slice,
                         )
                         st.session_state.messages[i]["feedback"] = "negative"
                         st.session_state.pending_negative_idx = None
@@ -178,10 +196,10 @@ if user_input := st.chat_input("Type your message here..."):
         
     history_for_backend = []
     for msg in st.session_state.messages:
-        history_for_backend.append({
-            "role": msg["role"],
-            "content": msg["content"]
-        })
+        item = {"role": msg["role"], "content": msg["content"]}
+        if msg["role"] == "assistant" and msg.get("chunks_used"):
+            item["chunks_used"] = msg["chunks_used"]
+        history_for_backend.append(item)
         
     st.session_state.messages.append({"role": "user", "content": user_input})
 
@@ -202,16 +220,20 @@ if user_input := st.chat_input("Type your message here..."):
             "history": history_for_backend
         }
         
+        chunks_used = []
+        debug_response = None
         try:
             response = requests.post(backend_url, headers=headers, json=payload)
-            
+
             if not response.ok:
                 error_msg = f"Server Error {response.status_code}: {response.text}"
                 st.error(error_msg)
                 st.stop()
-            
+
             backend_data = response.json()
-            
+            debug_response = backend_data
+            chunks_used = backend_data.get("chunks_used") or []
+
             if "response" in backend_data:
                 ai_response = backend_data["response"]
             elif "answer" in backend_data:
@@ -226,5 +248,10 @@ if user_input := st.chat_input("Type your message here..."):
             
         message_placeholder.markdown(ai_response)
 
-    st.session_state.messages.append({"role": "assistant", "content": ai_response})
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": ai_response,
+        "chunks_used": chunks_used,
+        "_debug": {"request": payload, "response": debug_response},
+    })
     st.rerun()
