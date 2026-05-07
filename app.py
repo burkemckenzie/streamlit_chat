@@ -4,14 +4,10 @@ import random
 from datetime import datetime, timezone
 
 # Set up the page title
-st.title("My Simple AI Chatbot")
+st.title("ACA-MEC Test")
 
 # --- 1. BACKEND CONFIGURATION ---
 BACKENDS = {
-    "TSC-MEC": {
-        "url": "https://george-ixfp.onrender.com",
-        "key": st.secrets["TSC_API_KEY"]
-    },
     "ACA-MEC": {
         "url": "https://air-canada.onrender.com",
         "key": st.secrets["ACA_API_KEY"]
@@ -84,7 +80,7 @@ def find_query_for(i):
 # --- 3. STATE & CALLBACKS ---
 # Initialize the default backend if it doesn't exist yet
 if "current_backend" not in st.session_state:
-    st.session_state.current_backend = "TSC-MEC"
+    st.session_state.current_backend = "ACA-MEC"
 
 # Initialize memory on the very first load
 if "messages" not in st.session_state:
@@ -93,29 +89,8 @@ if "messages" not in st.session_state:
 if "pending_negative_idx" not in st.session_state:
     st.session_state.pending_negative_idx = None
 
-def switch_backend():
-    """This runs instantly when the user changes the dropdown."""
-    # Grab the new value from the dropdown
-    new_backend = st.session_state.backend_dropdown
-
-    # Update the current backend memory
-    st.session_state.current_backend = new_backend
-
-    # Wipe the chat and fetch the new greeting
-    st.session_state.messages = [fetch_greeting(new_backend)]
-    st.session_state.pending_negative_idx = None
-
-
 # --- 4. THE SIDEBAR UI ---
 with st.sidebar:
-    # We add a 'key' and 'on_change' to trigger the wipe instantly
-    selected_backend = st.selectbox(
-        "Select Organization", 
-        ["TSC-MEC", "ACA-MEC"], 
-        key="backend_dropdown",
-        on_change=switch_backend
-    )
-    
     if st.button("New Chat", use_container_width=True):
         st.session_state.messages = [fetch_greeting(st.session_state.current_backend)]
         st.session_state.pending_negative_idx = None
@@ -125,18 +100,6 @@ with st.sidebar:
 for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-
-        if message["role"] == "assistant" and message.get("chunks_used"):
-            chunks = message["chunks_used"]
-            with st.expander(f"Chunks used ({len(chunks)})"):
-                st.write(chunks)
-
-        if message["role"] == "assistant" and message.get("_debug") is not None:
-            with st.expander("DEBUG: request sent + response received"):
-                st.markdown("**Request payload sent to backend:**")
-                st.json(message["_debug"]["request"])
-                st.markdown("**Raw response from backend:**")
-                st.json(message["_debug"]["response"])
 
         # Feedback widgets only on assistant messages, skipping the initial greeting (i == 0)
         if message["role"] == "assistant" and i > 0:
@@ -221,7 +184,6 @@ if user_input := st.chat_input("Type your message here..."):
         }
         
         chunks_used = []
-        debug_response = None
         try:
             response = requests.post(backend_url, headers=headers, json=payload)
 
@@ -231,7 +193,6 @@ if user_input := st.chat_input("Type your message here..."):
                 st.stop()
 
             backend_data = response.json()
-            debug_response = backend_data
             chunks_used = backend_data.get("chunks_used") or []
 
             if "response" in backend_data:
@@ -252,6 +213,5 @@ if user_input := st.chat_input("Type your message here..."):
         "role": "assistant",
         "content": ai_response,
         "chunks_used": chunks_used,
-        "_debug": {"request": payload, "response": debug_response},
     })
     st.rerun()
