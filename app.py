@@ -41,13 +41,13 @@ def _require_login():
 
         if submitted:
             users = st.secrets.get("users", {})
-            expected = next(
-                (p for u, p in users.items() if u.lower() == email.strip().lower()),
-                None,
-            )
-            if expected is not None and password == expected:
+            key = email.strip().lower()
+            info = next((v for u, v in users.items() if u.lower() == key), None)
+            if info is not None and password == info.get("password"):
                 st.session_state.authenticated = True
-                st.session_state.user_email = email.strip().lower()
+                st.session_state.user_email = key
+                st.session_state.user_name = info.get("name", key)
+                st.session_state.user_tag = info.get("tag", "")
                 st.rerun()
             else:
                 st.error("Invalid email or password.")
@@ -105,9 +105,21 @@ def submit_feedback(backend_name, feedback_type, query, response, comment="", hi
     }
     # Workaround: backends don't read `comment`, so embed it in `response` so it
     # lands in the ClickUp task body alongside the other fields.
+    identity = ""
+    if feedback_type == "negative":
+        name = st.session_state.get("user_name") or st.session_state.get("user_email", "unknown")
+        tag = st.session_state.get("user_tag", "")
+        identity = f"From: {name}" + (f" [{tag}]" if tag else "")
+
     response_with_comment = response
     if comment:
         response_with_comment = f"{response}\n\n---\n\n[User feedback comment: {comment}]"
+    # Append identity below the comment so it shows up regardless of which field
+    # the backend surfaces in ClickUp (the embedded `response` text or `comment`).
+    if identity:
+        response_with_comment = f"{response_with_comment}\n\n---\n\n{identity}"
+        comment = f"{comment}\n\n{identity}" if comment else identity
+
     payload = {
         "feedback_type": feedback_type,
         "query": query,
