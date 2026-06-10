@@ -107,9 +107,10 @@ def submit_feedback(backend_name, feedback_type, query, response, comment="", hi
     # lands in the ClickUp task body alongside the other fields.
     identity = ""
     if feedback_type == "negative":
-        name = st.session_state.get("user_name") or st.session_state.get("user_email", "unknown")
+        email = st.session_state.get("user_email", "unknown")
+        name = st.session_state.get("user_name") or email
         tag = st.session_state.get("user_tag", "")
-        identity = f"From: {name}" + (f" [{tag}]" if tag else "")
+        identity = f"From: {name} <{email}>" + (f" [{tag}]" if tag else "")
 
     response_with_comment = response
     if comment:
